@@ -15,7 +15,7 @@ fi
 
 # Build Go backend
 echo "Building Go backend..."
-go build -o picsapp main.go
+go build -o picsapp main.go database.go
 
 if [ $? -ne 0 ]; then
     echo "Error: Go build failed"

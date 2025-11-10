@@ -55,10 +55,12 @@ npm run build
 ```
 picsapp/
 ├── main.go              # Go backend server
+├── database.go          # SQLite database operations
 ├── go.mod               # Go dependencies
 ├── package.json         # Node.js dependencies
-├── uploads/            # Uploaded pictures (created automatically)
-├── build/              # React build output (created after build)
+├── picsapp.db           # SQLite database (created automatically)
+├── uploads/             # Uploaded pictures (created automatically)
+├── build/               # React build output (created after build)
 └── src/
     ├── App.jsx         # Main React app with routing
     ├── components/     # React components
@@ -69,6 +71,12 @@ picsapp/
     │   └── Presentation.jsx
     └── index.jsx       # React entry point
 ```
+
+## Data Persistence
+
+- **SQLite Database**: All picture metadata (ID, filename, URL, likes, upload date) is stored in `picsapp.db`
+- **Image Files**: Uploaded images are stored in the `uploads/` directory
+- **State Persistence**: All data persists between server restarts
 
 ## API Endpoints
 

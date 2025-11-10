@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
-	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -24,12 +22,6 @@ type Picture struct {
 	UploadedAt time.Time `json:"uploadedAt"`
 }
 
-type PictureStore struct {
-	mu       sync.RWMutex
-	pictures map[string]*Picture
-	order    []string // Maintain upload order
-}
-
 type Hub struct {
 	clients    map[*websocket.Conn]bool
 	broadcast  chan []byte
@@ -38,10 +30,7 @@ type Hub struct {
 }
 
 var (
-	store = &PictureStore{
-		pictures: make(map[string]*Picture),
-		order:    make([]string, 0),
-	}
+	db *Database
 	hub = &Hub{
 		clients:    make(map[*websocket.Conn]bool),
 		broadcast:  make(chan []byte),
@@ -53,69 +42,10 @@ var (
 			return true
 		},
 	}
+	uploadDir = "uploads"
+	dbPath    = "picsapp.db"
 )
 
-func (s *PictureStore) Add(picture *Picture) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.pictures[picture.ID] = picture
-	s.order = append(s.order, picture.ID)
-}
-
-func (s *PictureStore) Get(id string) (*Picture, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	pic, ok := s.pictures[id]
-	return pic, ok
-}
-
-func (s *PictureStore) GetLast(n int) []*Picture {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	
-	var result []*Picture
-	start := len(s.order) - n
-	if start < 0 {
-		start = 0
-	}
-	
-	for i := len(s.order) - 1; i >= start; i-- {
-		if pic, ok := s.pictures[s.order[i]]; ok {
-			result = append(result, pic)
-		}
-	}
-	
-	return result
-}
-
-func (s *PictureStore) GetAllSortedByLikes() []*Picture {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	
-	var result []*Picture
-	for _, pic := range s.pictures {
-		result = append(result, pic)
-	}
-	
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].Likes == result[j].Likes {
-			return result[i].UploadedAt.After(result[j].UploadedAt)
-		}
-		return result[i].Likes > result[j].Likes
-	})
-	
-	return result
-}
-
-func (s *PictureStore) IncrementLikes(id string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if pic, ok := s.pictures[id]; ok {
-		pic.Likes++
-		return true
-	}
-	return false
-}
 
 func (h *Hub) run() {
 	for {
@@ -159,7 +89,6 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	// Create uploads directory if it doesn't exist
-	uploadDir := "uploads"
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		http.Error(w, "Error creating upload directory", http.StatusInternalServerError)
 		return
@@ -183,26 +112,40 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Create picture record
 	picture := &Picture{
-		ID:        id,
-		Filename:  handler.Filename,
-		URL:       fmt.Sprintf("/uploads/%s", id),
-		Likes:     0,
+		ID:         id,
+		Filename:   handler.Filename,
+		URL:        fmt.Sprintf("/uploads/%s", id),
+		Likes:      0,
 		UploadedAt: time.Now(),
 	}
 
-	store.Add(picture)
+	// Save to database
+	if err := db.AddPicture(picture); err != nil {
+		log.Printf("Error saving picture to database: %v", err)
+		http.Error(w, "Error saving picture", http.StatusInternalServerError)
+		return
+	}
 
 	// Broadcast update
-	pictures := store.GetAllSortedByLikes()
-	update, _ := json.Marshal(pictures)
-	hub.broadcast <- update
+	pictures, err := db.GetAllPicturesSortedByLikes()
+	if err != nil {
+		log.Printf("Error getting pictures for broadcast: %v", err)
+	} else {
+		update, _ := json.Marshal(pictures)
+		hub.broadcast <- update
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(picture)
 }
 
 func handleList(w http.ResponseWriter, r *http.Request) {
-	pictures := store.GetLast(30) // 5x6 = 30
+	pictures, err := db.GetLastPictures(30) // 5x6 = 30
+	if err != nil {
+		log.Printf("Error getting pictures: %v", err)
+		http.Error(w, "Error fetching pictures", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(pictures)
 }
@@ -216,25 +159,37 @@ func handleLike(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	if store.IncrementLikes(id) {
-		// Broadcast update
-		pictures := store.GetAllSortedByLikes()
+	if err := db.IncrementLikes(id); err != nil {
+		http.Error(w, "Picture not found", http.StatusNotFound)
+		return
+	}
+
+	// Broadcast update
+	pictures, err := db.GetAllPicturesSortedByLikes()
+	if err != nil {
+		log.Printf("Error getting pictures for broadcast: %v", err)
+	} else {
 		update, _ := json.Marshal(pictures)
 		hub.broadcast <- update
-
-		if pic, ok := store.Get(id); ok {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(pic)
-		} else {
-			http.Error(w, "Picture not found", http.StatusNotFound)
-		}
-	} else {
-		http.Error(w, "Picture not found", http.StatusNotFound)
 	}
+
+	pic, err := db.GetPicture(id)
+	if err != nil {
+		http.Error(w, "Picture not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pic)
 }
 
 func handlePresentation(w http.ResponseWriter, r *http.Request) {
-	pictures := store.GetAllSortedByLikes()
+	pictures, err := db.GetAllPicturesSortedByLikes()
+	if err != nil {
+		log.Printf("Error getting pictures: %v", err)
+		http.Error(w, "Error fetching pictures", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(pictures)
 }
@@ -249,7 +204,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	hub.register <- conn
 
 	// Send initial data
-	pictures := store.GetAllSortedByLikes()
+	pictures, err := db.GetAllPicturesSortedByLikes()
+	if err != nil {
+		log.Printf("Error getting pictures for WebSocket: %v", err)
+		pictures = []*Picture{}
+	}
 	initial, _ := json.Marshal(pictures)
 	conn.WriteMessage(websocket.TextMessage, initial)
 
@@ -266,6 +225,22 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Initialize database
+	var err error
+	db, err = NewDatabase(dbPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+
+	log.Printf("Database initialized: %s", dbPath)
+
+	// Ensure uploads directory exists
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		log.Fatalf("Failed to create uploads directory: %v", err)
+	}
+	log.Printf("Uploads directory: %s", uploadDir)
+
 	// Start hub
 	go hub.run()
 
@@ -279,7 +254,7 @@ func main() {
 	r.HandleFunc("/ws", handleWebSocket)
 
 	// Serve static files
-	r.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads/"))))
+	r.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadDir))))
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("build/")))
 
 	port := os.Getenv("PORT")
@@ -288,6 +263,8 @@ func main() {
 	}
 
 	fmt.Printf("Server starting on port %s\n", port)
+	fmt.Printf("Database: %s\n", dbPath)
+	fmt.Printf("Uploads: %s\n", uploadDir)
 	log.Fatal(http.ListenAndServe(":"+port, r))
 }
 
