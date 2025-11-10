@@ -1,0 +1,7 @@
+node_modules/
+build/
+uploads/
+*.log
+.DS_Store
+go.sum
+

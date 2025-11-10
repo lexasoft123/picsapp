@@ -1,0 +1,220 @@
+.presentation-page {
+  padding: 2rem;
+  min-height: calc(100vh - 80px);
+}
+
+.presentation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2rem;
+  animation: fadeIn 0.6s ease;
+}
+
+.presentation-card {
+  position: relative;
+  background: rgba(20, 20, 20, 0.8);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  will-change: transform;
+}
+
+.presentation-card.initial {
+  animation: slideInUp 0.6s ease;
+  animation-fill-mode: both;
+}
+
+.presentation-card.swapping {
+  animation: swapAnimation 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  z-index: 100;
+  transition: none !important;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+.presentation-card:not(.swapping):not(.initial) {
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  backface-visibility: hidden;
+}
+
+.presentation-card:hover {
+  transform: translateY(-10px) scale(1.03);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.card-rank {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 1.1rem;
+  z-index: 10;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+  transition: all 0.3s ease;
+}
+
+.presentation-card.swapping .card-rank {
+  animation: rankUpdate 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.7);
+}
+
+.presentation-card:not(.swapping) .card-rank {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.presentation-image {
+  width: 100%;
+  height: 400px;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.presentation-card:hover .presentation-image {
+  transform: scale(1.1);
+}
+
+.card-info {
+  padding: 1.5rem;
+  background: rgba(10, 10, 10, 0.9);
+}
+
+.card-likes {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.likes-icon {
+  font-size: 1.5rem;
+  animation: float 3s ease-in-out infinite;
+}
+
+.likes-count {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 4rem;
+  color: #666;
+}
+
+.empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.empty-text {
+  font-size: 1.2rem;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes swapAnimation {
+  0% {
+    transform: scale(1) rotate(0deg) translateZ(0);
+    opacity: 1;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  20% {
+    transform: scale(1.05) rotate(-3deg) translateY(-5px) translateZ(0);
+    opacity: 0.95;
+    box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+  40% {
+    transform: scale(1.12) rotate(3deg) translateY(-12px) translateZ(0);
+    opacity: 0.98;
+    box-shadow: 0 12px 35px rgba(99, 102, 241, 0.6);
+    border-color: rgba(99, 102, 241, 0.7);
+  }
+  60% {
+    transform: scale(1.12) rotate(-2deg) translateY(-12px) translateZ(0);
+    opacity: 0.98;
+    box-shadow: 0 12px 35px rgba(99, 102, 241, 0.6);
+    border-color: rgba(99, 102, 241, 0.7);
+  }
+  80% {
+    transform: scale(1.05) rotate(1deg) translateY(-5px) translateZ(0);
+    opacity: 0.95;
+    box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+  100% {
+    transform: scale(1) rotate(0deg) translateZ(0);
+    opacity: 1;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+@keyframes rankUpdate {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3) rotate(5deg);
+  }
+}
+
+@media (max-width: 768px) {
+  .presentation-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .presentation-image {
+    height: 300px;
+  }
+}
+
