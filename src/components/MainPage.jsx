@@ -114,7 +114,6 @@ function MainPage() {
       onDrop={handleDrop}
     >
       <div className="container">
-        <h1 className="page-title">Picture Gallery</h1>
         <Upload 
           fileInputRef={fileInputRef}
           onFileSelect={handleFileInput}

@@ -1,5 +1,5 @@
 .main-page {
-  padding: 2rem;
+  padding: 1.5rem;
   min-height: calc(100vh - 80px);
   position: relative;
   transition: background-color 0.3s ease;
@@ -33,19 +33,8 @@
 }
 
 .container {
-  max-width: 1400px;
+  max-width: 1100px;
   margin: 0 auto;
-}
-
-.page-title {
-  text-align: center;
-  font-size: 2.5rem;
-  margin-bottom: 2rem;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: fadeInDown 0.6s ease;
 }
 
 .loading {
@@ -74,5 +63,57 @@
   50% {
     opacity: 1;
   }
+}
+
+.upload-section {
+  margin-bottom: 2rem;
+  animation: fadeIn 0.6s ease;
+}
+
+.upload-area {
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  padding: 1.6rem;
+  max-width: 420px;
+  margin: 0 auto;
+  text-align: center;
+  background: rgba(20, 20, 20, 0.6);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.upload-area:hover {
+  border-color: rgba(99, 102, 241, 0.5);
+  background: rgba(20, 20, 20, 0.75);
+  transform: translateY(-1px);
+}
+
+.upload-area.drag-active {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.12);
+  transform: scale(1.01);
+}
+
+.upload-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.upload-icon {
+  font-size: 2.4rem;
+  animation: float 3s ease-in-out infinite;
+}
+
+.upload-text {
+  font-size: 0.95rem;
+  color: #b0b0b0;
+  transition: color 0.3s ease;
+}
+
+.upload-area:hover .upload-text {
+  color: #e0e0e0;
 }
 

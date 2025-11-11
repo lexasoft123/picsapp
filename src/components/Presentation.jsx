@@ -463,7 +463,6 @@ function Presentation() {
     <div className="presentation-page">
       <div className="container">
         <div className="presentation-header">
-          <h1 className="page-title">Top Pictures by Likes</h1>
           <div className="layout-switch">
             <button
               className={`layout-btn ${layout === 'grid' ? 'active' : ''}`}
