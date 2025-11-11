@@ -8,7 +8,21 @@ function MainPage() {
   const [loading, setLoading] = useState(true);
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState('');
   const fileInputRef = useRef(null);
+  const wsRef = useRef(null);
+
+  const selectHomePictures = React.useCallback((list) => {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+    const sorted = [...list].sort((a, b) => {
+      const dateA = new Date(a.uploadedAt).getTime();
+      const dateB = new Date(b.uploadedAt).getTime();
+      return dateB - dateA;
+    });
+    return sorted.slice(0, 30);
+  }, []);
 
   const fetchPictures = async () => {
     try {
@@ -17,7 +31,7 @@ function MainPage() {
         throw new Error('Failed to fetch pictures');
       }
       const data = await response.json();
-      setPictures(Array.isArray(data) ? data : []);
+      setPictures(selectHomePictures(data));
     } catch (error) {
       console.error('Error fetching pictures:', error);
       setPictures([]);
@@ -28,6 +42,81 @@ function MainPage() {
 
   useEffect(() => {
     fetchPictures();
+
+    let isMounted = true;
+    let reconnectTimeout = null;
+
+    // WebSocket connection
+    // In development, connect directly to the Go server on port 8080
+    // In production, use the same host
+    const isDev = window.location.hostname === 'localhost' && window.location.port === '3000';
+    const wsHost = isDev ? 'localhost:8080' : window.location.host;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${wsHost}/ws`;
+
+    const connectWebSocket = () => {
+      if (!isMounted) return;
+
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = null;
+        }
+        setUploadMessage((prev) => (prev ? prev : ''));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (isMounted) {
+            setPictures(selectHomePictures(data));
+            setLoading(false);
+            setUploadMessage('');
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      ws.onclose = (event) => {
+        if (!isMounted) return;
+
+        if (event.wasClean) {
+          console.log('WebSocket disconnected cleanly');
+        } else {
+          console.log('WebSocket connection lost, attempting to reconnect...');
+          // Attempt to reconnect after a delay
+          reconnectTimeout = setTimeout(() => {
+            if (isMounted) {
+              connectWebSocket();
+            }
+          }, 3000);
+        }
+      };
+
+      wsRef.current = ws;
+    };
+
+    connectWebSocket();
+
+    return () => {
+      isMounted = false;
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      if (wsRef.current) {
+        if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
+          wsRef.current.close();
+        }
+      }
+    };
   }, []);
 
   const handleUpload = async (file) => {
@@ -47,7 +136,7 @@ function MainPage() {
       });
 
       if (response.ok) {
-        fetchPictures();
+        setUploadMessage('Image queued. Processing…');
       } else {
         alert('Upload failed. Please try again.');
       }
@@ -94,12 +183,9 @@ function MainPage() {
 
   const handleLike = async (id) => {
     try {
-      const response = await fetch(`/api/pictures/${id}/like`, {
+      await fetch(`/api/pictures/${id}/like`, {
         method: 'POST',
       });
-      if (response.ok) {
-        fetchPictures();
-      }
     } catch (error) {
       console.error('Error liking picture:', error);
     }
@@ -119,6 +205,9 @@ function MainPage() {
           onFileSelect={handleFileInput}
           uploading={uploading}
         />
+        {uploadMessage && (
+          <div className="upload-status">{uploadMessage}</div>
+        )}
         {loading ? (
           <div className="loading">Loading pictures...</div>
         ) : (

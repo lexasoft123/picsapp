@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -41,10 +42,33 @@ func (d *Database) initSchema() error {
 	
 	CREATE INDEX IF NOT EXISTS idx_uploaded_at ON pictures(uploaded_at);
 	CREATE INDEX IF NOT EXISTS idx_likes ON pictures(likes);
+
+	CREATE TABLE IF NOT EXISTS conversion_tasks (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		original_path TEXT NOT NULL UNIQUE,
+		original_name TEXT,
+		picture_id TEXT,
+		status TEXT NOT NULL DEFAULT 'pending',
+		error TEXT,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_conversion_status ON conversion_tasks(status);
 	`
 
-	_, err := d.db.Exec(query)
-	return err
+	if _, err := d.db.Exec(query); err != nil {
+		return err
+	}
+
+	// Ensure picture_id column exists for legacy DBs
+	if _, err := d.db.Exec(`ALTER TABLE conversion_tasks ADD COLUMN picture_id TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			log.Printf("warning: unable to add picture_id column: %v", err)
+		}
+	}
+
+	return nil
 }
 
 func (d *Database) Close() error {
@@ -155,3 +179,81 @@ func (d *Database) LoadAllPictures() ([]*Picture, error) {
 	return d.GetAllPicturesSortedByLikes()
 }
 
+func (d *Database) UpdatePictureFile(oldID, newID, newURL string) error {
+	query := `UPDATE pictures SET id = ?, url = ? WHERE id = ?`
+	_, err := d.db.Exec(query, newID, newURL, oldID)
+	return err
+}
+
+type ConversionTask struct {
+	ID           int64
+	OriginalPath string
+	OriginalName string
+	PictureID    *string
+	Status       string
+	Error        *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+func (d *Database) CreateConversionTask(path, name, pictureID string) error {
+	query := `INSERT OR IGNORE INTO conversion_tasks (original_path, original_name, picture_id) VALUES (?, ?, NULLIF(?, ''))`
+	_, err := d.db.Exec(query, path, name, pictureID)
+	return err
+}
+
+func (d *Database) ClaimNextTask() (*ConversionTask, error) {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	row := tx.QueryRow(`SELECT id, original_path, original_name, picture_id, status, error, created_at, updated_at FROM conversion_tasks WHERE status = 'pending' ORDER BY created_at LIMIT 1`)
+	var task ConversionTask
+	var errStr sql.NullString
+	var pictureID sql.NullString
+	if err := row.Scan(&task.ID, &task.OriginalPath, &task.OriginalName, &pictureID, &task.Status, &errStr, &task.CreatedAt, &task.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			tx.Rollback()
+			return nil, nil
+		}
+		tx.Rollback()
+		return nil, err
+	}
+	if pictureID.Valid {
+		task.PictureID = &pictureID.String
+	}
+	if errStr.Valid {
+		task.Error = &errStr.String
+	}
+
+	res, err := tx.Exec(`UPDATE conversion_tasks SET status = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'`, task.ID)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if rows == 0 {
+		tx.Rollback()
+		return nil, nil
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
+func (d *Database) MarkTaskCompleted(id int64) error {
+	_, err := d.db.Exec(`UPDATE conversion_tasks SET status = 'completed', error = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+	return err
+}
+
+func (d *Database) MarkTaskFailed(id int64, msg string) error {
+	_, err := d.db.Exec(`UPDATE conversion_tasks SET status = 'failed', error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, msg, id)
+	return err
+}
