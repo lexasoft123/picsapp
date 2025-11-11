@@ -9,16 +9,20 @@ function Presentation() {
   const [swappingIds, setSwappingIds] = useState(new Set());
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const isInitialLoadRef = useRef(true);
-  const [layout, setLayout] = useState('grid'); // 'grid' | 'spiral'
+  const initialLayout = (typeof window !== 'undefined' && window.location.hash === '#spiral') ? 'spiral' : 'grid';
+  const [layout, setLayout] = useState(initialLayout); // 'grid' | 'spiral'
   const containerRef = useRef(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [debugSpiral, setDebugSpiral] = useState(false);
-  // Physics for spiral layout
-  const positionsRef = useRef([]); // [{x,y,size}]
-  const targetsRef = useRef([]); // [{x,y,size}]
+  const [slowAnimation, setSlowAnimation] = useState(false);
+  // Spiral animation state
+  const positionsRef = useRef({}); // { [id]: {x,y,size} }
+  const targetsRef = useRef({}); // { [id]: {x,y,size} }
   const animRef = useRef(null);
   const [tick, setTick] = useState(0); // force re-render
   const lastIdsKeyRef = useRef('');
+  const prevOrderRef = useRef([]);
+  const animStateRef = useRef({ active: false, progress: 0, start: {}, end: {}, startOrder: [], endOrder: [] });
 
   useEffect(() => {
     let ws = null;
@@ -183,6 +187,19 @@ function Presentation() {
   const limitedPictures = safePictures.slice(0, 30);
   const idsKey = limitedPictures.map((p) => p.id).join('|');
 
+  // Sync layout with hash changes
+  useEffect(() => {
+    const handleHashChange = () => {
+      if (window.location.hash === '#spiral') {
+        setLayout('spiral');
+      } else {
+        setLayout('grid');
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
   // Update targets whenever data or size changes
   useEffect(() => {
     if (layout !== 'spiral') return;
@@ -212,7 +229,8 @@ function Presentation() {
     const maxLikes = n > 0 ? (limitedPictures[0]?.likes ?? 0) : 0;
     const minLikes = n > 0 ? (limitedPictures[n - 1]?.likes ?? 0) : 0;
     const likesRange = Math.max(0, maxLikes - minLikes);
-    const newTargets = [];
+    const newTargetsMap = {};
+    const endOrder = limitedPictures.map((pic) => pic.id);
     for (let i = 0; i < limitedPictures.length; i++) {
       const theta = (i === 0 ? 0 : (i + skipSteps - 1) * thetaStep);
       // Archimedean radius
@@ -227,24 +245,47 @@ function Presentation() {
         const t = i / (n - 1); // 0..1
         size = Math.round(maxSize - t * (maxSize - minSize));
       }
-      newTargets.push({ x, y, size });
+      newTargetsMap[limitedPictures[i].id] = { x, y, size };
     }
-    targetsRef.current = newTargets;
+    targetsRef.current = newTargetsMap;
 
-    const pos = positionsRef.current;
-    const orderChanged = lastIdsKeyRef.current !== idsKey;
-    if (!pos || pos.length !== newTargets.length) {
-      positionsRef.current = newTargets.map((t) => ({ x: t.x, y: t.y, size: t.size }));
-    } else {
-      for (let i = 0; i < newTargets.length; i++) {
-        pos[i].size = newTargets[i].size;
-      }
-      if (orderChanged) {
-        // Keep current positions but ensure subsequent interpolation starts fresh
-        // (no additional action needed beyond updating targets)
+    const prevPositionsMap = positionsRef.current || {};
+    const prevOrder = prevOrderRef.current || [];
+    const changedIds = new Set();
+    for (const id of endOrder) {
+      const prev = prevPositionsMap[id];
+      const target = newTargetsMap[id];
+      if (!prev) {
+        changedIds.add(id);
+      } else if (Math.abs(prev.x - target.x) > 1 || Math.abs(prev.y - target.y) > 1 || Math.abs(prev.size - target.size) > 1) {
+        changedIds.add(id);
       }
     }
+
+    if (Object.keys(prevPositionsMap).length === 0 || changedIds.size === 0) {
+      positionsRef.current = { ...newTargetsMap };
+      animStateRef.current = { active: false, progress: 1, start: newTargetsMap, end: newTargetsMap, startOrder: endOrder, endOrder, changedIds: [] };
+    } else {
+      const startMap = {};
+      for (const id of endOrder) {
+        const same = !changedIds.has(id);
+        const base = prevPositionsMap[id] || newTargetsMap[id];
+        startMap[id] = same ? newTargetsMap[id] : base;
+      }
+      animStateRef.current = {
+        active: changedIds.size > 0,
+        progress: 0,
+        start: startMap,
+        end: newTargetsMap,
+        startOrder: [...prevOrder],
+        endOrder: [...endOrder],
+        changedIds: Array.from(changedIds),
+      };
+    }
+
+    positionsRef.current = positionsRef.current || {};
     lastIdsKeyRef.current = idsKey;
+    prevOrderRef.current = [...endOrder];
     setTick((t) => t + 1);
   }, [layout, containerSize.width, containerSize.height, limitedPictures.length, idsKey]);
 
@@ -255,26 +296,70 @@ function Presentation() {
       return;
     }
     let last = performance.now();
-    const baseSmoothing = 0.14;
+    const baseSmoothing = debugSpiral || slowAnimation ? 0.03 : 0.18;
 
     const step = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
+      const animState = animStateRef.current;
       const targets = targetsRef.current;
-      const pos = positionsRef.current;
-      if (!targets || !pos) {
+      if (!targets || !animState) {
         animRef.current = requestAnimationFrame(step);
         return;
       }
 
-      const alpha = Math.min(1, baseSmoothing * (dt * 60));
+      if (animState.active) {
+        const alpha = Math.min(1, baseSmoothing * (dt * 60));
+        animState.progress = Math.min(1, animState.progress + alpha);
 
-      for (let i = 0; i < pos.length; i++) {
-        pos[i].x += (targets[i].x - pos[i].x) * alpha;
-        pos[i].y += (targets[i].y - pos[i].y) * alpha;
-        pos[i].size += (targets[i].size - pos[i].size) * alpha;
+        const currentPositions = positionsRef.current || {};
+        const newPositions = { ...currentPositions };
+        const changedSet = new Set(animState.changedIds || []);
+        for (const id of animState.endOrder) {
+          const start = animState.start[id] || animState.end[id] || targets[id];
+          const end = animState.end[id] || targets[id];
+          const t = animState.progress;
+          if (!changedSet.has(id)) {
+            if (!newPositions[id]) {
+              newPositions[id] = { ...end };
+            }
+          } else {
+            newPositions[id] = {
+              x: start.x + (end.x - start.x) * t,
+              y: start.y + (end.y - start.y) * t,
+              size: start.size + (end.size - start.size) * t,
+            };
+          }
+        }
+        positionsRef.current = newPositions;
+
+        if (animState.progress >= 1) {
+          animState.active = false;
+          const merged = { ...positionsRef.current };
+          for (const id of animState.changedIds || []) {
+            if (animState.end[id]) {
+              merged[id] = { ...animState.end[id] };
+            }
+          }
+          positionsRef.current = merged;
+        }
+      } else {
+        const currentPositions = positionsRef.current || {};
+        const newPositions = { ...currentPositions };
+        for (const id in targets) {
+          const current = currentPositions[id] || targets[id];
+          const target = targets[id];
+          const alpha = Math.min(1, baseSmoothing * (dt * 60));
+          newPositions[id] = {
+            x: current.x + (target.x - current.x) * alpha,
+            y: current.y + (target.y - current.y) * alpha,
+            size: current.size + (target.size - current.size) * alpha,
+          };
+        }
+        positionsRef.current = newPositions;
       }
-      positionsRef.current = [...pos];
+
+      animStateRef.current = animState;
       setTick((t) => (t + 1) % 1000000);
       animRef.current = requestAnimationFrame(step);
     };
@@ -282,7 +367,7 @@ function Presentation() {
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [layout]);
+  }, [layout, debugSpiral, slowAnimation]);
 
   if (loading) {
     return (
@@ -301,12 +386,15 @@ function Presentation() {
     const items = [];
 
     // Use physics-driven positions
-    const pos = positionsRef.current;
+    const posMap = positionsRef.current || {};
+    const targetMap = targetsRef.current || {};
+    const fallbackSize = Math.min(Math.min(containerSize.width || 600, containerSize.height || 600) * 0.35, 300);
     if (debugSpiral) {
       // Render dots at target centers with likes labels
-      const targets = targetsRef.current && targetsRef.current.length === limitedPictures.length ? targetsRef.current : [];
+      const targets = targetsRef.current && Object.keys(targetMap).length === limitedPictures.length ? targetMap : {};
       for (let i = 0; i < limitedPictures.length; i++) {
-        const t = targets[i] || pos[i] || { x: cx, y: cy };
+        const pic = limitedPictures[i];
+        const t = targets[pic.id] || posMap[pic.id] || { x: cx, y: cy };
         const showCount = i < 10;
         const likeCount = limitedPictures[i]?.likes ?? 0;
         items.push(
@@ -321,17 +409,30 @@ function Presentation() {
         );
       }
     } else {
+      const changedSet = animStateRef.current && animStateRef.current.changedIds ? new Set(animStateRef.current.changedIds) : null;
       for (let i = 0; i < limitedPictures.length; i++) {
         const pic = limitedPictures[i];
-        const p = pos[i] || { x: cx, y: cy, size: 200 };
-        const classNames = i === 0 ? `spiral-card top ${swappingIds.has(pic.id) ? 'swapping' : ''}` : `spiral-card ${swappingIds.has(pic.id) ? 'swapping' : ''}`;
-        const showCount = i < 10;
+        const target = targetMap[pic.id] || { x: cx, y: cy, size: fallbackSize };
+        const current = posMap[pic.id] || target;
+        const p = { x: current.x, y: current.y, size: current.size ?? target.size ?? fallbackSize };
+        const animState = animStateRef.current;
+        const isAnimating = Boolean(animState && animState.active && changedSet && changedSet.has(pic.id)) || swappingIds.has(pic.id);
+        const classNames = i === 0 ? `spiral-card top ${isAnimating ? 'swapping' : ''}`.trim() : `spiral-card ${isAnimating ? 'swapping' : ''}`.trim();
+        let zIndex = limitedPictures.length - i;
+        if (animState && animState.active) {
+          const startOrder = animState.startOrder || [];
+          const idx = startOrder.indexOf(pic.id);
+          if (idx !== -1) {
+            zIndex = startOrder.length - idx;
+          }
+        }
+        const showCount = i < 5;
         const likeCount = pic.likes;
         items.push(
           <div
             key={pic.id}
             className={classNames}
-            style={{ left: p.x, top: p.y, width: p.size, height: p.size, zIndex: (limitedPictures.length - i) }}
+            style={{ left: p.x, top: p.y, width: p.size, height: p.size, zIndex }}
           >
             {showCount && (
               <div className="spiral-like-tag">
@@ -366,26 +467,45 @@ function Presentation() {
           <div className="layout-switch">
             <button
               className={`layout-btn ${layout === 'grid' ? 'active' : ''}`}
-              onClick={() => setLayout('grid')}
+              onClick={() => {
+                setLayout('grid');
+                if (typeof window !== 'undefined') {
+                  window.history.replaceState(null, '', '#grid');
+                }
+              }}
               aria-label="Grid layout"
             >
               Grid
             </button>
             <button
               className={`layout-btn ${layout === 'spiral' ? 'active' : ''}`}
-              onClick={() => setLayout('spiral')}
+              onClick={() => {
+                setLayout('spiral');
+                if (typeof window !== 'undefined') {
+                  window.history.replaceState(null, '', '#spiral');
+                }
+              }}
               aria-label="Spiral layout"
             >
               Spiral
             </button>
             {layout === 'spiral' && (
-              <button
-                className={`layout-btn ${debugSpiral ? 'active' : ''}`}
-                onClick={() => setDebugSpiral((v) => !v)}
-                aria-label="Toggle spiral debug"
-              >
-                Debug
-              </button>
+              <>
+                <button
+                  className={`layout-btn ${debugSpiral ? 'active' : ''}`}
+                  onClick={() => setDebugSpiral((v) => !v)}
+                  aria-label="Toggle spiral debug"
+                >
+                  Debug
+                </button>
+                <button
+                  className={`layout-btn ${slowAnimation ? 'active' : ''}`}
+                  onClick={() => setSlowAnimation((v) => !v)}
+                  aria-label="Toggle slow animation"
+                >
+                  Slow
+                </button>
+              </>
             )}
           </div>
         </div>
