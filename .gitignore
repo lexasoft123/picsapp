@@ -1,6 +1,7 @@
 node_modules/
 build/
 uploads/
+data/
 *.log
 .DS_Store
 go.sum

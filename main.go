@@ -56,9 +56,16 @@ var (
 	}
 	uploadDir   = "uploads"
 	originalDir = "uploads/original"
-	dbPath      = "picsapp.db"
+	dbPath      = getEnv("DATABASE_PATH", "picsapp.db")
 	logger      = log.New(os.Stdout, "", log.LstdFlags|log.Lmicroseconds)
 )
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
 
 func logInfo(format string, args ...interface{}) {
 	logger.Printf("[INFO] "+format, args...)
@@ -321,9 +328,26 @@ func main() {
 	r.HandleFunc("/api/presentation", handlePresentation).Methods("GET")
 	r.HandleFunc("/ws", handleWebSocket)
 
-	// Serve static files
+	// Serve uploads
 	r.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadDir))))
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("build/")))
+
+	// Serve static files from build directory
+	staticFS := http.FileServer(http.Dir("build/"))
+	r.PathPrefix("/static/").Handler(staticFS)
+
+	// SPA catch-all: serve index.html for all other routes (allows React Router to handle routing)
+	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the requested path is a file (has an extension) and exists
+		path := filepath.Join("build", r.URL.Path)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			// File exists, serve it
+			staticFS.ServeHTTP(w, r)
+			return
+		}
+		// Otherwise, serve index.html for SPA routing (React Router will handle the route)
+		indexPath := filepath.Join("build", "index.html")
+		http.ServeFile(w, r, indexPath)
+	})
 
 	port := os.Getenv("PORT")
 	if port == "" {
