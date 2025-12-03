@@ -1,0 +1,372 @@
+openapi: 3.0.3
+info:
+  title: PicsApp API
+  description: |
+    REST API for PicsApp - A picture sharing application with real-time updates.
+    
+    Features:
+    - Upload pictures with automatic WebP conversion
+    - View pictures sorted by upload date or likes
+    - Like pictures with real-time updates via WebSocket
+    - Presentation mode with grid and spiral layouts
+    
+    **Note**: This API also supports WebSocket connections at `/ws` for real-time updates.
+    See the API documentation for WebSocket protocol details.
+  version: 1.0.0
+  contact:
+    name: PicsApp API Support
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://api.example.com
+    description: Production server (example)
+
+tags:
+  - name: Pictures
+    description: Picture management operations
+  - name: Upload
+    description: Picture upload operations
+  - name: Presentation
+    description: Presentation and sorted views
+
+paths:
+  /api/upload:
+    post:
+      tags:
+        - Upload
+      summary: Upload a picture
+      description: |
+        Upload a new picture file for processing. The file will be:
+        1. Saved temporarily to `uploads/original/`
+        2. Queued for WebP conversion
+        3. Processed by a background worker
+        4. Broadcasted to all WebSocket clients when complete
+        
+        Supported image formats: JPEG, PNG, GIF, WebP
+        Maximum file size: 10 MB
+      operationId: uploadPicture
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - picture
+              properties:
+                picture:
+                  type: string
+                  format: binary
+                  description: Image file to upload (JPEG, PNG, GIF, WebP)
+            encoding:
+              picture:
+                contentType: image/jpeg, image/png, image/gif, image/webp
+      responses:
+        '200':
+          description: Picture queued for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+              example:
+                status: queued
+        '400':
+          description: Bad request - Invalid form data or file
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                parsingError:
+                  value: Error parsing form
+                fileError:
+                  value: Error retrieving file
+        '405':
+          description: Method not allowed
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Method not allowed
+        '500':
+          description: Internal server error
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                directoryError:
+                  value: Error creating upload directory
+                saveError:
+                  value: Error saving file
+                queueError:
+                  value: Error queueing image conversion
+
+  /api/pictures:
+    get:
+      tags:
+        - Pictures
+      summary: Get recent pictures
+      description: |
+        Get the last 30 uploaded pictures, sorted by upload date (newest first).
+        Used by the home page grid display.
+      operationId: getPictures
+      responses:
+        '200':
+          description: List of recent pictures
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Picture'
+              example:
+                - id: "1762801393825964000.webp"
+                  filename: "download.jpeg"
+                  url: "/uploads/1762801393825964000.webp"
+                  likes: 5
+                  uploadedAt: "2024-01-15T10:30:00Z"
+                - id: "1762801393825964001.webp"
+                  filename: "image.png"
+                  url: "/uploads/1762801393825964001.webp"
+                  likes: 3
+                  uploadedAt: "2024-01-15T11:00:00Z"
+        '500':
+          description: Internal server error
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Error fetching pictures
+
+  /api/pictures/{id}/like:
+    post:
+      tags:
+        - Pictures
+      summary: Like a picture
+      description: |
+        Increment the like count for a picture. After incrementing:
+        1. The like count is updated in the database
+        2. All pictures are fetched and sorted by likes
+        3. An update is broadcasted to all WebSocket clients
+        4. The updated picture is returned
+      operationId: likePicture
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Picture ID (e.g., "1762801393825964000.webp")
+          schema:
+            type: string
+            pattern: '^[0-9]+\.webp$'
+          example: "1762801393825964000.webp"
+      responses:
+        '200':
+          description: Picture with updated like count
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Picture'
+              example:
+                id: "1762801393825964000.webp"
+                filename: "download.jpeg"
+                url: "/uploads/1762801393825964000.webp"
+                likes: 6
+                uploadedAt: "2024-01-15T10:30:00Z"
+        '404':
+          description: Picture not found
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Picture not found
+        '405':
+          description: Method not allowed
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Method not allowed
+        '500':
+          description: Internal server error
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/presentation:
+    get:
+      tags:
+        - Presentation
+      summary: Get all pictures sorted by likes
+      description: |
+        Get all pictures sorted by likes (descending), then by upload date (descending).
+        Used by the presentation page which displays pictures in grid or spiral layout.
+        Returns all pictures (no limit).
+      operationId: getPresentation
+      responses:
+        '200':
+          description: List of all pictures sorted by likes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Picture'
+              example:
+                - id: "1762801393825964000.webp"
+                  filename: "download.jpeg"
+                  url: "/uploads/1762801393825964000.webp"
+                  likes: 10
+                  uploadedAt: "2024-01-15T10:30:00Z"
+                - id: "1762801393825964001.webp"
+                  filename: "image.png"
+                  url: "/uploads/1762801393825964001.webp"
+                  likes: 8
+                  uploadedAt: "2024-01-15T11:00:00Z"
+                - id: "1762801393825964002.webp"
+                  filename: "photo.jpg"
+                  url: "/uploads/1762801393825964002.webp"
+                  likes: 5
+                  uploadedAt: "2024-01-15T12:00:00Z"
+        '500':
+          description: Internal server error
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Error fetching pictures
+
+  /ws:
+    get:
+      tags:
+        - Pictures
+      summary: WebSocket connection for real-time updates
+      description: |
+        WebSocket endpoint for real-time picture updates.
+        
+        **Connection**: Connect to `ws://host/ws` or `wss://host/ws`
+        
+        **Initial Message**: Upon connection, the server immediately sends a JSON array of all pictures sorted by likes.
+        
+        **Update Messages**: The server broadcasts updates when:
+        - A new picture is uploaded and converted
+        - A picture is liked
+        - A picture is re-converted
+        
+        **Message Format**: All messages are JSON-encoded arrays of Picture objects.
+        
+        **Client Messages**: Clients don't need to send messages. The connection is kept alive automatically.
+        
+        **Reconnection**: Clients should implement automatic reconnection with exponential backoff.
+      operationId: connectWebSocket
+      parameters:
+        - name: Upgrade
+          in: header
+          required: true
+          description: Must be "websocket"
+          schema:
+            type: string
+            example: websocket
+        - name: Connection
+          in: header
+          required: true
+          description: Must be "Upgrade"
+          schema:
+            type: string
+            example: Upgrade
+        - name: Sec-WebSocket-Key
+          in: header
+          required: true
+          description: WebSocket handshake key
+          schema:
+            type: string
+        - name: Sec-WebSocket-Version
+          in: header
+          required: true
+          description: WebSocket protocol version (must be "13")
+          schema:
+            type: string
+            example: "13"
+      responses:
+        '101':
+          description: Switching Protocols - WebSocket connection established
+        '400':
+          description: Bad request - Invalid WebSocket upgrade request
+
+components:
+  schemas:
+    Picture:
+      type: object
+      required:
+        - id
+        - filename
+        - url
+        - likes
+        - uploadedAt
+      properties:
+        id:
+          type: string
+          description: Unique picture identifier (timestamp + .webp extension)
+          pattern: '^[0-9]+\.webp$'
+          example: "1762801393825964000.webp"
+        filename:
+          type: string
+          description: Original filename from upload
+          example: "download.jpeg"
+        url:
+          type: string
+          description: URL path to serve the image
+          pattern: '^/uploads/[0-9]+\.webp$'
+          example: "/uploads/1762801393825964000.webp"
+        likes:
+          type: integer
+          description: Number of likes received
+          minimum: 0
+          example: 5
+        uploadedAt:
+          type: string
+          format: date-time
+          description: Upload timestamp in ISO 8601 / RFC3339 format
+          example: "2024-01-15T10:30:00Z"
+      example:
+        id: "1762801393825964000.webp"
+        filename: "download.jpeg"
+        url: "/uploads/1762801393825964000.webp"
+        likes: 5
+        uploadedAt: "2024-01-15T10:30:00Z"
+
+    UploadResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          description: Upload status
+          enum:
+            - queued
+          example: queued
+      example:
+        status: queued
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Error message
+          example: "Picture not found"
+      example:
+        message: "Picture not found"
+
+  securitySchemes:
+    # Currently no authentication required
+    # Future: Add API key or OAuth2 here
+
+# Security (currently none - all endpoints are public)
+security: []
+

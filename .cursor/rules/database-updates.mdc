@@ -1,0 +1,11 @@
+# Database Update Rules
+
+## Adding a Database Table or Column
+
+1. Add migration in `database.go`
+2. Update `docs/DATABASE.md`:
+   - Add table schema
+   - Add column descriptions
+   - Add indexes
+   - Add example data
+   - Update relationships section

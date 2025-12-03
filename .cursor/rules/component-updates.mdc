@@ -1,0 +1,9 @@
+# Component Update Rules
+
+## Adding a New Component
+
+1. Create component file
+2. Update `docs/PROJECT_STRUCTURE.md`:
+   - Add component description
+   - Update directory structure
+   - Add component purpose and usage

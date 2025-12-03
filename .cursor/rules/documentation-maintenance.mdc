@@ -1,0 +1,72 @@
+# Documentation Maintenance
+
+When making code changes, ALWAYS update the relevant documentation files to keep them in sync with the codebase.
+
+## API Changes
+
+**When modifying API endpoints in `main.go` (handlers, routes, request/response formats):**
+1. Update `docs/API.md` with:
+   - New/modified endpoint descriptions
+   - Updated request/response formats
+   - New error responses
+   - Updated examples
+2. Update `docs/openapi.yaml` with:
+   - New/modified paths
+   - Updated schemas
+   - New request/response models
+   - Updated examples
+   - New error responses
+
+**Files to update:**
+- `docs/API.md`
+- `docs/openapi.yaml`
+
+## Database Schema Changes
+
+**When modifying database schema in `database.go` (tables, columns, indexes, migrations):**
+1. Update `docs/DATABASE.md` with:
+   - New/modified table schemas
+   - Updated column definitions
+   - New indexes
+   - Updated query patterns
+   - Migration notes
+
+**Files to update:**
+- `docs/DATABASE.md`
+
+## Data Model Changes
+
+**When modifying data structures (structs in Go, objects in JavaScript):**
+1. Update `docs/OBJECT_MODEL.md` with:
+   - New/modified struct definitions
+   - Updated field descriptions
+   - New relationships
+   - Updated type conversions
+   - New validation rules
+
+**Files to update:**
+- `docs/OBJECT_MODEL.md`
+- `docs/API.md` (if API response formats change)
+- `docs/openapi.yaml` (if schemas change)
+
+## Project Structure Changes
+
+**When adding/removing files or directories:**
+1. Update `docs/PROJECT_STRUCTURE.md` with:
+   - New file descriptions
+   - Updated directory structure
+   - New component descriptions
+   - Updated data flow diagrams
+
+**Files to update:**
+- `docs/PROJECT_STRUCTURE.md`
+
+## New Features
+
+**When adding new features:**
+1. Update relevant documentation files based on what changed:
+   - API endpoints → `docs/API.md` and `docs/openapi.yaml`
+   - Database changes → `docs/DATABASE.md`
+   - New components → `docs/PROJECT_STRUCTURE.md`
+   - New models → `docs/OBJECT_MODEL.md`
+2. Update `docs/README.md` if features list changes

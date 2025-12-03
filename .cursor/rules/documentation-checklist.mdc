@@ -1,0 +1,20 @@
+# Documentation Update Checklist
+
+Before completing any code changes, verify:
+
+- [ ] API endpoints documented in `docs/API.md`
+- [ ] API endpoints documented in `docs/openapi.yaml`
+- [ ] Database schema documented in `docs/DATABASE.md`
+- [ ] Data models documented in `docs/OBJECT_MODEL.md`
+- [ ] Project structure documented in `docs/PROJECT_STRUCTURE.md`
+- [ ] Examples are accurate and up-to-date
+- [ ] Error responses are documented
+- [ ] Request/response formats match the code
+
+## Validation
+
+After updating documentation:
+- Verify OpenAPI spec is valid (can be checked with swagger-cli)
+- Ensure all code examples are syntactically correct
+- Check that all referenced files/paths exist
+- Verify consistency between API.md and openapi.yaml

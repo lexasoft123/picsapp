@@ -1,0 +1,27 @@
+# API Endpoint Update Rules
+
+## Adding a New API Endpoint
+
+1. Add handler function in `main.go`
+2. Add route in `main.go`
+3. Update `docs/API.md`:
+   - Add endpoint section with full description
+   - Include request/response examples
+   - Document error responses
+4. Update `docs/openapi.yaml`:
+   - Add path definition
+   - Add request/response schemas
+   - Add examples
+   - Add error responses
+
+## Modifying an Existing Endpoint
+
+1. Update handler in `main.go`
+2. Update `docs/API.md`:
+   - Update endpoint description
+   - Update request/response examples
+   - Update error responses if changed
+3. Update `docs/openapi.yaml`:
+   - Update path definition
+   - Update schemas if response format changed
+   - Update examples

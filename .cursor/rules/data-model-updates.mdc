@@ -1,0 +1,13 @@
+# Data Model Update Rules
+
+## Adding a New Data Structure
+
+1. Define struct in Go or object in JavaScript
+2. Update `docs/OBJECT_MODEL.md`:
+   - Add structure definition
+   - Add field descriptions
+   - Add JSON examples
+   - Update relationships if applicable
+3. If used in API, update:
+   - `docs/API.md` (response examples)
+   - `docs/openapi.yaml` (schemas)

@@ -1,0 +1,33 @@
+# Documentation Update Priority
+
+## REQUIRED Updates
+
+Documentation updates are **REQUIRED** for:
+- API endpoint changes (including new endpoints)
+- Database schema changes
+- Data model changes
+- Breaking changes to existing functionality
+
+## RECOMMENDED Updates
+
+Documentation updates are **RECOMMENDED** for:
+- New features
+- Bug fixes that change behavior
+- Performance improvements that change API behavior
+
+## Documentation Style Guidelines
+
+- Use clear, concise descriptions
+- Include code examples where helpful
+- Use consistent formatting (markdown)
+- Keep examples up-to-date with actual code
+- Document edge cases and error conditions
+- Include relevant notes and warnings
+
+## Automatic Documentation Updates
+
+When you make code changes, proactively:
+1. Identify which documentation files are affected
+2. Update them as part of the same change
+3. Verify examples still work
+4. Ensure consistency across all documentation files

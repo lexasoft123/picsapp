@@ -1,0 +1,10 @@
+# OpenAPI Specification Standards
+
+When updating `docs/openapi.yaml`:
+- Use OpenAPI 3.0.3 format
+- Include all required fields (summary, description, operationId)
+- Provide examples for all request/response schemas
+- Document all error responses with appropriate status codes
+- Use consistent naming conventions
+- Include parameter validation (patterns, types, constraints)
+- Tag endpoints appropriately
